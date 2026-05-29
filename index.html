@@ -234,9 +234,30 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
   white-space: nowrap;
 }
 /* ── Performance table: progress bar columns ── */
-#section-performance{overflow-x:auto;}
-#memberTable{min-width:900px;}
-.period-grp-th{text-align:center;border-bottom:0.5px solid rgba(255,255,255,.08);
+/* Performance freeze pane: the section fills the visible content area; the
+   toggle sits above a table-scroll wrapper that scrolls internally, and the
+   table header is sticky inside that wrapper. So the toggle stays put (it's
+   outside the scroller) and the header pins at the top of the scroll region
+   while members scroll. Scoped to #section-performance — other tabs (plain
+   blocks in the shared .content-body) are untouched. */
+#section-performance{ display:flex; flex-direction:column; height:100%; min-height:0; }
+.perf-tscroll{ flex:1; min-height:0; overflow:auto; }
+/* separate borders (not collapse) so the sticky thead doesn't leave a 1px
+   collapsed-border seam between header rows; bottom-only borders look identical */
+#memberTable{min-width:900px; border-collapse:separate; border-spacing:0;}
+
+#perfViewToggle-wrap{
+  flex:0 0 auto;
+  display:flex; justify-content:flex-end;
+  padding:0 0 8px;
+}
+/* opaque header backing on thead + rows + cells so no dark page-bg shows
+   through any sub-pixel seam between the two header rows */
+#memberTable thead, #memberTable thead tr, #memberTable thead th{ background:var(--oak-card); }
+/* Pin the whole thead as one unit: both header rows move together, no
+   inter-row offset to mis-measure. */
+#memberTable thead{ position:sticky; top:0; z-index:2; }
+.period-grp-th{text-align:center;
   font-size:.52rem;letter-spacing:2px;text-transform:uppercase;font-weight:600;}
 .period-sub-th{font-size:.48rem;padding:2px 5px 5px;font-weight:500;
   letter-spacing:.5px;text-align:center;cursor:pointer;
@@ -943,12 +964,13 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
     </div>
     <div class="content-body">
       <div id="section-performance">
-      <div style="display:flex;justify-content:flex-end;padding:0 0 8px">
+      <div id="perfViewToggle-wrap">
         <div class="view-toggle" id="perfViewToggle">
           <button class="vt-btn active" onclick="document.dispatchEvent(new CustomEvent('perf-view',{detail:'numbers'}))">Numbers</button>
           <button class="vt-btn" onclick="document.dispatchEvent(new CustomEvent('perf-view',{detail:'chart'}))">Chart</button>
         </div>
       </div>
+      <div class="perf-tscroll">
       <table id="memberTable" class="matrix">
         <thead id="memberTableHead">
           <tr>
@@ -964,6 +986,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
         </thead>
         <tbody id="memberBody"></tbody>
       </table>
+      </div><!-- /perf-tscroll -->
       </div><!-- /section-performance -->
 
       <div id="section-events" style="display:none"></div>
