@@ -228,6 +228,11 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
 #memberTable.single-period td{padding:7px 10px;}
 #memberTable.single-period .heat{font-size:12px;padding:3px 12px;}
 #memberTable.single-period .perf-prog-pct{font-size:.68rem;}
+#memberTable.chart-mode th[rowspan],
+#memberTable.chart-mode td:not([colspan]) {
+  width: 1px;
+  white-space: nowrap;
+}
 /* ── Performance table: progress bar columns ── */
 #section-performance{overflow-x:auto;}
 #memberTable{min-width:900px;}
@@ -1086,12 +1091,12 @@ function fmtNum(n){if(n==null||n==='')return '—'; return Number(n).toLocaleStr
 
 // ── PERFORMANCE SPARKLINE (chart mode) ──
 function makePerfSparkline(m) {
-  const W = 280, H = 46, PAD_X = 18, PAD_Y = 5;
-  const innerH = H - 2*PAD_Y;
-  // Oldest period first (e.g. wk5 -> wk4 -> ... -> current)
+  const W = 600, H = 56, PAD_X = 16, PAD_Y = 4, LBL_H = 16;
+  const innerH = H - PAD_Y - LBL_H;
   const orderedKeys = [...PERIOD_KEYS].reverse();
   const _ts   = RAW.thresholds_summary || {};
   const _PTHR = _ts.points_min || 0;
+  const n     = orderedKeys.length;
 
   const vals = orderedKeys.map(function(k) {
     const pd = m.periods[k];
@@ -1106,63 +1111,73 @@ function makePerfSparkline(m) {
     return '<span style="color:var(--text-faint);font-family:var(--fm);font-size:.6rem">—</span>';
   }
 
-  const maxVal  = Math.max.apply(null, validVals.concat([1.05]));
-  const n       = orderedKeys.length;
-  const xStep   = n > 1 ? (W - 2*PAD_X) / (n - 1) : 0;
-  const gid     = 'pfg_' + m.name.replace(/[^A-Za-z0-9]/g,'_');
+  const maxVal = Math.max.apply(null, validVals.concat([1.1]));
+  const slotW  = (W - 2*PAD_X) / n;
+  const barW   = Math.floor(slotW * 0.72);
+  const thrY   = PAD_Y + innerH - (1.0 / maxVal) * innerH;
 
-  const pts = orderedKeys.map(function(k, i) {
-    const v = vals[i];
-    const x = PAD_X + i * xStep;
-    const y = v !== null ? PAD_Y + innerH - (v / maxVal) * innerH : null;
-    return {x:x, y:y, v:v, k:k};
-  });
+  // Geometry (bars, baseline, threshold tick) is drawn in a stretched SVG
+  // (preserveAspectRatio="none") so bars fill the column. All TEXT is rendered
+  // as HTML overlay positioned in % of the cell, so it never stretches and
+  // matches the table font/size exactly. Map viewBox units -> % of the cell.
+  const xPct = function(x){ return (x / W * 100).toFixed(2) + '%'; };
+  const yPct = function(y){ return (y / H * 100).toFixed(2) + '%'; };
 
-  // Path + area
-  var pathD = '', areaD = '';
-  var validPts = pts.filter(function(p){ return p.y !== null; });
-  if (validPts.length >= 2) {
-    pathD = validPts.map(function(p,i){ return (i===0?'M':'L')+p.x.toFixed(1)+','+p.y.toFixed(1); }).join(' ');
-    areaD = pathD + ' L'+validPts[validPts.length-1].x.toFixed(1)+','+(PAD_Y+innerH)
-          + ' L'+validPts[0].x.toFixed(1)+','+(PAD_Y+innerH)+' Z';
-  }
+  var bars = '', labels = '';
+  orderedKeys.forEach(function(k, i) {
+    var v      = vals[i];
+    var isCur  = (k === 'current');
+    var lbl    = (PERIOD_LABELS[k]||k).replace('Week ','W').replace('Current','Cur');
+    var slotCx = PAD_X + i * slotW + slotW / 2;
+    var barX   = slotCx - barW / 2;
 
-  // Threshold reference line at 100%
-  var thrY = PAD_Y + innerH - (1.0 / maxVal) * innerH;
+    // X-axis period label — HTML overlay in the bottom band
+    labels += '<div style="position:absolute;left:'+xPct(slotCx)+';bottom:0;transform:translateX(-50%);'
+            + 'font-family:var(--fm);font-size:.6rem;letter-spacing:1px;line-height:1;white-space:nowrap;pointer-events:none;'
+            + 'color:'+(isCur?'rgba(201,165,91,0.75)':'rgba(139,116,64,0.5)')+'">'+lbl+'</div>';
 
-  // Dots + labels
-  var dots = '', labels = '';
-  pts.forEach(function(p) {
-    if (p.y === null) return;
-    var isCur = (p.k === 'current');
-    var v = p.v;
-    var dotColor = isCur
-      ? (v >= 1.0 ? '#7AA858' : v >= 0.5 ? '#C9A55B' : '#B85450')
-      : (v >= 1.0 ? 'rgba(122,168,88,0.65)' : v >= 0.5 ? 'rgba(201,165,91,0.45)' : 'rgba(184,84,80,0.45)');
-    var r    = isCur ? 5 : 3;
-    var pct  = Math.round(v * 100);
-    var lbl  = (PERIOD_LABELS[p.k]||p.k).replace('Week ','W').replace('Current','Cur');
-    var tip  = (PERIOD_LABELS[p.k]||p.k) + ': ' + pct + '%';
-    dots += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="12" fill="transparent" data-tip="'+tip+'"/>';
-    dots += '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="'+r+'" fill="'+dotColor+'"'
-          + (isCur ? ' stroke="rgba(201,165,91,0.35)" stroke-width="2"' : '')
+    if (v === null) {
+      bars += '<rect x="'+barX.toFixed(1)+'" y="'+(PAD_Y+innerH-3).toFixed(1)+'" width="'+barW+'" height="3" rx="1" fill="rgba(201,165,91,0.07)"/>';
+      return;
+    }
+
+    var barH  = Math.max((v / maxVal) * innerH, 2);
+    var barY  = PAD_Y + innerH - barH;
+    var pct   = Math.round(v * 100);
+    var tip   = (PERIOD_LABELS[k]||k) + ': ' + pct + '%';
+    var fill  = v >= 1.0 ? (isCur ? '#7AA858' : 'rgba(122,168,88,0.5)')
+              : v >= 0.5 ? (isCur ? '#C9A55B' : 'rgba(201,165,91,0.4)')
+              :             (isCur ? '#B85450' : 'rgba(184,84,80,0.4)');
+
+    bars += '<rect x="'+barX.toFixed(1)+'" y="'+barY.toFixed(1)+'" width="'+barW+'" height="'+barH.toFixed(1)+'" rx="2" fill="transparent" data-tip="'+tip+'"/>';
+    bars += '<rect x="'+barX.toFixed(1)+'" y="'+barY.toFixed(1)+'" width="'+barW+'" height="'+barH.toFixed(1)+'" rx="2"'
+          + ' fill="'+fill+'"'
+          + (isCur ? ' stroke="rgba(201,165,91,0.45)" stroke-width="1.5"' : '')
           + ' style="pointer-events:none"/>';
-    labels += '<text x="'+p.x.toFixed(1)+'" y="'+(H+17)+'" text-anchor="middle"'
-            + ' font-family="\'Cormorant Garamond\',serif" font-size="8" letter-spacing="1"'
-            + ' fill="'+(isCur?'rgba(201,165,91,0.6)':'rgba(139,116,64,0.35)')+'"'
-            + ' style="pointer-events:none">'+lbl+'</text>';
+
+    // % value label — HTML overlay: inside tall bars, above short ones
+    if (barH > 16) {
+      labels += '<div style="position:absolute;left:'+xPct(slotCx)+';top:'+yPct(barY)+';transform:translate(-50%,2px);'
+              + 'font-family:var(--fm);font-size:.68rem;line-height:1;white-space:nowrap;pointer-events:none;'
+              + 'color:'+(isCur?'#fff':'rgba(201,165,91,0.9)')+'">'+pct+'%</div>';
+    } else if (barH > 4) {
+      labels += '<div style="position:absolute;left:'+xPct(slotCx)+';top:'+yPct(barY)+';transform:translate(-50%,-115%);'
+              + 'font-family:var(--fm);font-size:.68rem;line-height:1;white-space:nowrap;pointer-events:none;'
+              + 'color:rgba(201,165,91,0.7)">'+pct+'%</div>';
+    }
   });
 
-  return '<svg width="100%" height="'+(H+22)+'" viewBox="0 0 '+W+' '+(H+22)+'" preserveAspectRatio="none" style="display:block;overflow:visible;min-width:180px">'
-    + '<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'
-    + '<stop offset="0%" stop-color="rgba(201,165,91,0.12)"/>'
-    + '<stop offset="100%" stop-color="rgba(201,165,91,0)"/>'
-    + '</linearGradient></defs>'
-    + '<line x1="'+PAD_X+'" y1="'+(PAD_Y+innerH)+'" x2="'+(W-PAD_X)+'" y2="'+(PAD_Y+innerH)+'" stroke="rgba(201,165,91,0.07)" stroke-width="1"/>'
-    + '<line x1="'+PAD_X+'" y1="'+thrY.toFixed(1)+'" x2="'+(W-PAD_X)+'" y2="'+thrY.toFixed(1)+'" stroke="rgba(122,168,88,0.22)" stroke-width="1" stroke-dasharray="3,3"/>'
-    + (areaD ? '<path d="'+areaD+'" fill="url(#'+gid+')"/>' : '')
-    + (pathD ? '<path d="'+pathD+'" stroke="rgba(201,165,91,0.4)" stroke-width="1.5" fill="none" stroke-linejoin="round" stroke-linecap="round"/>' : '')
-    + dots + labels + '</svg>';
+  // 100% threshold label — HTML overlay, left of the axis tick
+  labels += '<div style="position:absolute;left:0;top:'+yPct(thrY)+';transform:translate(-100%,-50%);padding-right:5px;'
+          + 'font-family:var(--fm);font-size:.55rem;line-height:1;white-space:nowrap;pointer-events:none;'
+          + 'color:rgba(122,168,88,0.55)">100%</div>';
+
+  return '<div style="position:relative;width:100%;height:'+H+'px;min-width:200px;overflow:visible">'
+    + '<svg width="100%" height="100%" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" style="position:absolute;inset:0;display:block;overflow:visible">'
+    + '<line x1="'+PAD_X+'" y1="'+(PAD_Y+innerH)+'" x2="'+(W-PAD_X)+'" y2="'+(PAD_Y+innerH)+'" stroke="rgba(201,165,91,0.08)" stroke-width="1"/>'
+    + '<line x1="'+(PAD_X-6)+'" y1="'+thrY.toFixed(1)+'" x2="'+(PAD_X+6)+'" y2="'+thrY.toFixed(1)+'" stroke="rgba(122,168,88,0.5)" stroke-width="1.5"/>'
+    + bars + '</svg>'
+    + labels + '</div>';
 }
 
 // ── BUILD MATRIX TABLE ──
@@ -1174,7 +1189,8 @@ function buildTable(){
   // Rebuild THEAD — two-row: period group (colspan=2) on row 1,
   //   Progress / Points sub-headers on row 2
   const thead = document.getElementById('memberTableHead');
-  const nameThStyle = isAll ? 'min-width:110px' : 'width:44%';
+  const nameThStyle = perfView === 'chart' ? 'width:1px;white-space:nowrap'
+                    : isAll ? 'min-width:110px' : 'width:44%';
   thead.innerHTML = `<tr>
     <th class="rn" rowspan="2">#</th>
     <th rowspan="2" style="width:4%" data-sort="g" onclick="sortTable('g')">G</th>
@@ -1208,9 +1224,10 @@ function buildTable(){
   const _ST_COL = {met:'var(--met)',warning:'var(--warn)',below:'var(--below)',zero:'var(--zero-text)',absent:'var(--text-faint)'};
   const _ST_BG  = {met:'rgba(70,100,50,.18)',warning:'rgba(130,90,30,.2)',below:'rgba(120,40,30,.2)',zero:'rgba(0,0,0,.1)',absent:'transparent'};
 
+  document.getElementById('memberTable').classList.toggle('chart-mode', perfView === 'chart');
   tbody.innerHTML = getSortedMembers().map(m=>{
     const cells = perfView==='chart'
-      ? `<td colspan="${activePeriods.length*2}" style="padding:2px 8px">${makePerfSparkline(m)}</td>`
+      ? `<td colspan="${activePeriods.length*2}" style="padding:2px 8px;min-width:500px;width:60%">${makePerfSparkline(m)}</td>`
       : activePeriods.flatMap(p=>{
       const pd     = m.periods[p];
       const chests = pd ? (pd.chests || 0) : 0;
