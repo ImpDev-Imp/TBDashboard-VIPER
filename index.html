@@ -93,6 +93,16 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
 .matrix tr:hover td{background:rgba(201,165,91,.04);}
 .matrix tr.selected td{background:rgba(201,165,91,.08)!important;}
 .matrix tr.selected td.name{color:var(--gold);}
+/* ── STANDARDIZED DATA-GRID TYPOGRAPHY ──
+   Flatten every data grid: all header text -> var(--fd) .6rem; all value/cell
+   text (names, badges, and the many inline-styled cells in the table-building
+   JS) -> var(--fm) 11px. !important is required to override those scattered
+   inline font-sizes. The Performance sparkline cell (.perf-chart-cell) is
+   exempt so its absolutely-positioned bar labels keep their own sizes. */
+.matrix th, .matrix th *,
+.cal-table th, .cal-table th *{ font-family:var(--fd)!important; font-size:.6rem!important; }
+.matrix td:not(.perf-chart-cell), .matrix td:not(.perf-chart-cell) *,
+.cal-table td, .cal-table td *{ font-family:var(--fm)!important; font-size:11px!important; }
 .heat{border-radius:2px;padding:2px 6px;display:inline-block;font-family:var(--fm);font-size:10px;font-weight:500;}
 .h5{background:#1F4A2A;color:#A8DFB8;border:1px solid #2A5832;}
 .h4{background:#2A5832;color:#B8EAC8;border:1px solid #3A5028;}
@@ -1249,7 +1259,7 @@ function buildTable(){
   document.getElementById('memberTable').classList.toggle('chart-mode', perfView === 'chart');
   tbody.innerHTML = getSortedMembers().map(m=>{
     const cells = perfView==='chart'
-      ? `<td colspan="${activePeriods.length*2}" style="padding:2px 8px;min-width:500px;width:60%">${makePerfSparkline(m)}</td>`
+      ? `<td class="perf-chart-cell" colspan="${activePeriods.length*2}" style="padding:2px 8px;min-width:500px;width:60%">${makePerfSparkline(m)}</td>`
       : activePeriods.flatMap(p=>{
       const pd     = m.periods[p];
       const chests = pd ? (pd.chests || 0) : 0;
