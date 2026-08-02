@@ -4456,9 +4456,15 @@ function buildRoaSection() {
     return n;
   }
 
-  // "Most data" cohort: has current period score, and at least half of all
-  // available RoA periods (min 3). Sorted by average desc when applied.
+  // "Most data" is a sort mode only (never excludes members):
+  //   1) members with current + ≥ half of periods, ordered by avg desc
+  //   2) everyone else underneath, also by avg desc
   const MOST_DATA_MIN = Math.max(3, Math.ceil(PERIODS.length * 0.5));
+
+  function isMostDataCohort(map) {
+    const cur = getRoa(map, lastPeriod);
+    return cur !== null && cur > 0 && dataCount(map) >= MOST_DATA_MIN;
+  }
 
   function render() {
     // Most-data forces avg desc; otherwise resolve column sort as usual
@@ -4508,26 +4514,22 @@ function buildRoaSection() {
       return v > best.v ? { v: v, name: m.name } : best;
     }, { v: 0, name: '—' });
 
-    // Count of full-history members (for chip) — same rules as the filter
+    // Cohort size for the chip/toggle label only — does not exclude anyone
     const mostDataCount = MEMBERS.filter(function(m) {
-      const map = scoreMap(m.name);
-      const cur = getRoa(map, lastPeriod);
-      return cur !== null && cur > 0 && dataCount(map) >= MOST_DATA_MIN;
+      return isMostDataCohort(scoreMap(m.name));
     }).length;
 
     if (roaFilter === 'met')    members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v!==null&&v>0&&HAS_THRESH&&v>=THRESH; });
     if (roaFilter === 'below')  members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v!==null&&v>0&&HAS_THRESH&&v<THRESH; });
     if (roaFilter === 'absent') members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v===null||v===0; });
-    if (roaFilter === 'most-data') {
-      members = members.filter(function(row) {
-        const cur = getRoa(row.map, lastPeriod);
-        return cur !== null && cur > 0 && dataCount(row.map) >= MOST_DATA_MIN;
-      });
-    }
+    // most-data: no member filter — sort only (see below)
 
     members.sort(function(a, b) {
-      // Most-data: primary avg desc; tie-break more periods with data, then name
+      // Most-data: cohort first (avg desc), then everyone else underneath (avg desc)
       if (roaFilter === 'most-data') {
+        const aTop = isMostDataCohort(a.map) ? 1 : 0;
+        const bTop = isMostDataCohort(b.map) ? 1 : 0;
+        if (bTop !== aTop) return bTop - aTop;
         const av = roaSortVal(a, 'avg'), bv = roaSortVal(b, 'avg');
         if (bv !== av) return bv - av;
         const ac = dataCount(a.map), bc = dataCount(b.map);
@@ -4554,8 +4556,8 @@ function buildRoaSection() {
         + '<div class="chip-value">' + countVal + '</div></div>';
     }
 
-    const mostDataTip = 'Members with current-period RoA and data in at least '
-      + MOST_DATA_MIN + ' of ' + PERIODS.length + ' periods (≥ half). Sorted by average desc.';
+    const mostDataTip = 'Sort only — does not hide anyone. Members with current RoA and ≥'
+      + MOST_DATA_MIN + '/' + PERIODS.length + ' periods first (avg desc); rest underneath (avg desc).';
 
     const kpiHtml = '<div class="kpi-chips">'
       + chip('Members', null, MEMBERS.length, roaFilter===null?'chip-met':'')
@@ -4644,7 +4646,7 @@ function buildRoaSection() {
       : '';
     const sourceHint = usingFallback ? ' · 5-period fallback' : ' · full DB history';
     const filterHint = roaFilter === 'most-data'
-      ? ' · Most data: current + ≥' + MOST_DATA_MIN + '/' + PERIODS.length + ' periods · avg desc'
+      ? ' · Most data sort: full-history cohort first (avg desc) · all ' + members.length + ' members kept'
       : (roaFilter ? ' · Filtered: ' + roaFilter : '');
 
     el.innerHTML =
