@@ -4248,7 +4248,7 @@ let roaUnit = 'M';
 let roaSort = null;         // null | period-start-iso | meta col
 let roaSortDir = 'desc';
 let roaView = 'numbers';
-let roaFilter = null; // null | 'met' | 'below' | 'absent'
+let roaFilter = null; // null | 'met' | 'below' | 'absent' | 'most-data'
 
 function buildRoaSection() {
   const el = document.getElementById('section-roa');
@@ -4447,10 +4447,26 @@ function buildRoaSection() {
       + dots + labels + '</svg></div>';
   }
 
+  function dataCount(map) {
+    let n = 0;
+    PERIODS.forEach(function(k) {
+      const v = getRoa(map, k);
+      if (v !== null && v > 0) n++;
+    });
+    return n;
+  }
+
+  // "Most data" cohort: has current period score, and at least half of all
+  // available RoA periods (min 3). Sorted by average desc when applied.
+  const MOST_DATA_MIN = Math.max(3, Math.ceil(PERIODS.length * 0.5));
+
   function render() {
-    // Resolve sort each render so column clicks take effect
-    const sortCol = (roaSort && (PERIODS.indexOf(roaSort) !== -1 || META_COLS.indexOf(roaSort) !== -1))
-      ? roaSort : lastPeriod;
+    // Most-data forces avg desc; otherwise resolve column sort as usual
+    const sortCol = (roaFilter === 'most-data')
+      ? 'avg'
+      : ((roaSort && (PERIODS.indexOf(roaSort) !== -1 || META_COLS.indexOf(roaSort) !== -1))
+          ? roaSort : lastPeriod);
+    const sortDir = (roaFilter === 'most-data') ? 'desc' : roaSortDir;
 
     let members = MEMBERS.map(function(m, idx) {
       return { m: m, map: scoreMap(m.name), idx: idx };
@@ -4481,12 +4497,6 @@ function buildRoaSection() {
       if (col === 'name')   return m.name.toLowerCase();
       return -1;
     }
-    members.sort(function(a, b) {
-      const av = roaSortVal(a, sortCol), bv = roaSortVal(b, sortCol);
-      const asc = roaSortDir === 'asc';
-      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
-      return asc ? av - bv : bv - av;
-    });
 
     const lastVals    = MEMBERS.map(function(m){ return getRoa(scoreMap(m.name), lastPeriod); });
     const played      = lastVals.filter(function(v){ return v !== null && v > 0; });
@@ -4498,25 +4508,58 @@ function buildRoaSection() {
       return v > best.v ? { v: v, name: m.name } : best;
     }, { v: 0, name: '—' });
 
+    // Count of full-history members (for chip) — same rules as the filter
+    const mostDataCount = MEMBERS.filter(function(m) {
+      const map = scoreMap(m.name);
+      const cur = getRoa(map, lastPeriod);
+      return cur !== null && cur > 0 && dataCount(map) >= MOST_DATA_MIN;
+    }).length;
+
     if (roaFilter === 'met')    members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v!==null&&v>0&&HAS_THRESH&&v>=THRESH; });
     if (roaFilter === 'below')  members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v!==null&&v>0&&HAS_THRESH&&v<THRESH; });
     if (roaFilter === 'absent') members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v===null||v===0; });
+    if (roaFilter === 'most-data') {
+      members = members.filter(function(row) {
+        const cur = getRoa(row.map, lastPeriod);
+        return cur !== null && cur > 0 && dataCount(row.map) >= MOST_DATA_MIN;
+      });
+    }
+
+    members.sort(function(a, b) {
+      // Most-data: primary avg desc; tie-break more periods with data, then name
+      if (roaFilter === 'most-data') {
+        const av = roaSortVal(a, 'avg'), bv = roaSortVal(b, 'avg');
+        if (bv !== av) return bv - av;
+        const ac = dataCount(a.map), bc = dataCount(b.map);
+        if (bc !== ac) return bc - ac;
+        return a.m.name.localeCompare(b.m.name);
+      }
+      const av = roaSortVal(a, sortCol), bv = roaSortVal(b, sortCol);
+      const asc = sortDir === 'asc';
+      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
+      return asc ? av - bv : bv - av;
+    });
 
     const globalMax = Math.max.apply(null, members.flatMap(function(row){
       return PERIODS.map(function(k){ return getRoa(row.map,k) || 0; });
     }).concat([0]));
 
-    function chip(label, val, countVal, cls) {
+    function chip(label, val, countVal, cls, tip) {
       const active = roaFilter === val;
       const filterEvt = "document.dispatchEvent(new CustomEvent('roa-filter',{detail:'" + val + "'}))";
       const border = active ? 'border-color:var(--gold);box-shadow:0 0 0 1px rgba(201,165,91,.2);' : '';
-      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '">'
+      const tipAttr = tip ? ' data-tip="' + tip.replace(/"/g, '&quot;') + '"' : '';
+      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '"' + tipAttr + '>'
         + '<div class="chip-label">' + label + '</div>'
         + '<div class="chip-value">' + countVal + '</div></div>';
     }
 
+    const mostDataTip = 'Members with current-period RoA and data in at least '
+      + MOST_DATA_MIN + ' of ' + PERIODS.length + ' periods (≥ half). Sorted by average desc.';
+
     const kpiHtml = '<div class="kpi-chips">'
       + chip('Members', null, MEMBERS.length, roaFilter===null?'chip-met':'')
+      + chip('Most data', 'most-data', mostDataCount, roaFilter==='most-data'?'chip-met':'', mostDataTip)
       + (HAS_THRESH && metCount!==null   ? chip('Met (last)',   'met',    metCount,    'chip-met')   : '')
       + (HAS_THRESH && belowCount!==null ? chip('Below (last)', 'below',  belowCount,  'chip-below') : '')
       + chip('Absent (last)', 'absent', absentCount, 'chip-zero')
@@ -4527,7 +4570,7 @@ function buildRoaSection() {
     function th(label, col, opts) {
       opts = opts || {};
       const active  = sortCol === col;
-      const arrow   = active ? (roaSortDir === 'asc' ? ' ▴' : ' ▾') : '';
+      const arrow   = active ? (sortDir === 'asc' ? ' ▴' : ' ▾') : '';
       const color   = active ? 'color:var(--gold);' : '';
       const bg      = opts.bg || '';
       const tip     = opts.tip ? ' data-tip="' + opts.tip + '"' : '';
@@ -4600,6 +4643,9 @@ function buildRoaSection() {
       ? roaDate(PERIODS[0]) + ' → ' + roaDate(lastPeriod)
       : '';
     const sourceHint = usingFallback ? ' · 5-period fallback' : ' · full DB history';
+    const filterHint = roaFilter === 'most-data'
+      ? ' · Most data: current + ≥' + MOST_DATA_MIN + '/' + PERIODS.length + ' periods · avg desc'
+      : (roaFilter ? ' · Filtered: ' + roaFilter : '');
 
     el.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 10px;gap:12px;flex-wrap:wrap">'
@@ -4620,7 +4666,7 @@ function buildRoaSection() {
       + PERIODS.length + ' period' + (PERIODS.length!==1?'s':'')
       + (rangeHint ? ' · ' + rangeHint : '')
       + sourceHint + ' · ' + threshHint
-      + (roaFilter ? ' · Filtered: ' + roaFilter : '') + '</div>'
+      + filterHint + '</div>'
       + '<div style="overflow-x:auto">'
       + '<table class="matrix"><thead><tr>'
       + '<th class="rn">#</th>'
