@@ -4901,7 +4901,7 @@ let doUnit = 'M';
 let doSort = null;          // null | period-start-iso | 'name'|'joined'|'might'|'hero'|'avg'|'delta'|'trend'
 let doSortDir = 'desc';
 let doView = 'numbers';
-let doFilter = null;        // null | 'absent'
+let doFilter = null;        // null | 'absent' | 'most-data'
 
 function buildDarkOmensSection() {
   const el = document.getElementById('section-dark-omens');
@@ -4959,11 +4959,24 @@ function buildDarkOmensSection() {
 
   // Resolve effective sort column (default: most recent active period).
   const META_COLS = ['name','joined','might','hero','avg','delta','trend','thresh'];
-  const sortCol = (doSort && (PERIODS.indexOf(doSort) !== -1 || META_COLS.indexOf(doSort) !== -1))
-    ? doSort : lastPeriod;
 
   function getDO(map, ps) {
     return (ps in map) ? map[ps] : null;
+  }
+
+  function doDataCount(map) {
+    let n = 0;
+    PERIODS.forEach(function(k) {
+      const v = getDO(map, k);
+      if (v !== null && v > 0) n++;
+    });
+    return n;
+  }
+  // Sort-only cohort: current + ≥ half of active DO periods (never excludes members).
+  const DO_MOST_DATA_MIN = Math.max(1, Math.ceil(PERIODS.length * 0.5));
+  function isDoMostDataCohort(map) {
+    const cur = getDO(map, lastPeriod);
+    return cur !== null && cur > 0 && doDataCount(map) >= DO_MOST_DATA_MIN;
   }
 
   function fmtDO(val) {
@@ -5073,6 +5086,12 @@ function buildDarkOmensSection() {
   }
 
   function render() {
+    const sortCol = (doFilter === 'most-data')
+      ? 'avg'
+      : ((doSort && (PERIODS.indexOf(doSort) !== -1 || META_COLS.indexOf(doSort) !== -1))
+          ? doSort : lastPeriod);
+    const sortDir = (doFilter === 'most-data') ? 'desc' : doSortDir;
+
     let members = MEMBERS.map(function(m, idx) {
       return { m: m, map: scoreMap(m.name), idx: idx };
     });
@@ -5095,32 +5114,52 @@ function buildDarkOmensSection() {
       if (col === 'name')   return m.name.toLowerCase();
       return -1;
     }
-    members.sort(function(a, b) {
-      const av = sortVal(a, sortCol), bv = sortVal(b, sortCol);
-      const asc = doSortDir === 'asc';
-      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
-      return asc ? av - bv : bv - av;
-    });
 
     const lastVals    = MEMBERS.map(function(m){ return getDO(scoreMap(m.name), lastPeriod); });
     const absentCount = lastVals.filter(function(v){ return v === null || v === 0; }).length;
     const topM = MEMBERS.reduce(function(best,m){ const v=getDO(scoreMap(m.name),lastPeriod)||0; return v>best.v?{v:v,name:m.name}:best; },{v:0,name:'—'});
 
     if (doFilter === 'absent') members = members.filter(function(row){ const v=getDO(row.map,lastPeriod); return v===null||v===0; });
+    // most-data: sort only — never excludes
 
+    members.sort(function(a, b) {
+      if (doFilter === 'most-data') {
+        const aTop = isDoMostDataCohort(a.map) ? 1 : 0;
+        const bTop = isDoMostDataCohort(b.map) ? 1 : 0;
+        if (bTop !== aTop) return bTop - aTop;
+        const av = sortVal(a, 'avg'), bv = sortVal(b, 'avg');
+        if (bv !== av) return bv - av;
+        const ac = doDataCount(a.map), bc = doDataCount(b.map);
+        if (bc !== ac) return bc - ac;
+        return a.m.name.localeCompare(b.m.name);
+      }
+      const av = sortVal(a, sortCol), bv = sortVal(b, sortCol);
+      const asc = sortDir === 'asc';
+      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
+      return asc ? av - bv : bv - av;
+    });
+
+    const gridCount = members.length;
+    const topCohortCount = members.filter(function(row){ return isDoMostDataCohort(row.map); }).length;
     const globalMax = Math.max.apply(null, members.flatMap(function(row){ return PERIODS.map(function(k){ return getDO(row.map,k) || 0; }); }).concat([0]));
 
-    function chip(label, val, countVal, cls) {
+    function chip(label, val, countVal, cls, tip) {
       const active = doFilter === val;
       const filterEvt = "document.dispatchEvent(new CustomEvent('do-filter',{detail:'" + val + "'}))";
       const border = active ? 'border-color:var(--gold);box-shadow:0 0 0 1px rgba(201,165,91,.2);' : '';
-      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '">'
+      const tipAttr = tip ? ' data-tip="' + tip.replace(/"/g, '&quot;') + '"' : '';
+      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '"' + tipAttr + '>'
         + '<div class="chip-label">' + label + '</div>'
         + '<div class="chip-value">' + countVal + '</div></div>';
     }
 
+    const mostDataTip = 'Sort only — shows all ' + gridCount + ' grid rows. '
+      + topCohortCount + ' full-history (current + ≥' + DO_MOST_DATA_MIN + '/' + PERIODS.length
+      + ' periods) first by avg desc; rest underneath.';
+
     const kpiHtml = '<div class="kpi-chips">'
-      + chip('Members', null, MEMBERS.length, doFilter===null?'chip-met':'')
+      + chip('Members', null, gridCount, doFilter===null?'chip-met':'', 'Rows currently in the grid')
+      + chip('Most data', 'most-data', gridCount, doFilter==='most-data'?'chip-met':'', mostDataTip)
       + chip('Absent (last)', 'absent', absentCount, 'chip-zero')
       + '<div class="kpi-chip" style="cursor:default"><div class="chip-label">Top (last)</div>'
       + '<div class="chip-value" style="font-size:.75rem;max-width:90px;overflow:hidden;text-overflow:ellipsis">'
@@ -5129,7 +5168,7 @@ function buildDarkOmensSection() {
     function th(label, col, opts) {
       opts = opts || {};
       const active  = sortCol === col;
-      const arrow   = (active && !opts.noSort) ? (doSortDir === 'asc' ? ' ▴' : ' ▾') : '';
+      const arrow   = (active && !opts.noSort) ? (sortDir === 'asc' ? ' ▴' : ' ▾') : '';
       const color   = active ? 'color:var(--gold);' : '';
       const bg      = opts.bg || '';
       const tip     = opts.tip ? ' data-tip="' + opts.tip + '"' : '';
@@ -5202,6 +5241,9 @@ function buildDarkOmensSection() {
       + '<button class="vt-btn ' + (doView==='numbers'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'do-view\',{detail:\'numbers\'}))">Numbers</button>'
       + '<button class="vt-btn ' + (doView==='chart'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'do-view\',{detail:\'chart\'}))">Chart</button>'
       + '</div>'
+      + '<div class="view-toggle" data-tip="' + mostDataTip.replace(/"/g, '&quot;') + '">'
+      + '<button class="vt-btn ' + (doFilter==='most-data'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'do-filter\',{detail:\'most-data\'}))">Most data (' + gridCount + ')</button>'
+      + '</div>'
       + (doView==='numbers'
         ? '<div class="view-toggle">'
           + '<button class="vt-btn ' + (doUnit==='M'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'do-unit\',{detail:\'M\'}))">M</button>'
@@ -5209,7 +5251,9 @@ function buildDarkOmensSection() {
           + '</div>'
         : '')
       + '</div></div>'
-      + '<div class="roa-hint" style="margin-bottom:10px">Per active period: <span style="color:var(--gold-dim)">DO</span> = Dark Omens · <span style="color:#6FA8AC">RoD</span> = Remnants of Dread (Spoils of Dread) · ' + PERIODS.length + ' active period' + (PERIODS.length!==1?'s':'') + (doFilter ? ' · Filtered: ' + doFilter : '') + '</div>'
+      + '<div class="roa-hint" style="margin-bottom:10px">Per active period: <span style="color:var(--gold-dim)">DO</span> = Dark Omens · <span style="color:#6FA8AC">RoD</span> = Remnants of Dread (Spoils of Dread) · ' + PERIODS.length + ' active period' + (PERIODS.length!==1?'s':'')
+      + (doFilter === 'most-data' ? ' · Most data sort · ' + gridCount + ' rows' : (doFilter ? ' · Filtered: ' + doFilter + ' · ' + gridCount + ' rows' : ' · ' + gridCount + ' rows'))
+      + '</div>'
       + '<table class="matrix">'
       + (doView === 'numbers'
         ? '<thead><tr>'
@@ -5240,7 +5284,7 @@ function buildDarkOmensSection() {
   }
 
   document.addEventListener('do-sort',   function(e) {
-    if (e.detail === sortCol) { doSortDir = doSortDir === 'desc' ? 'asc' : 'desc'; }
+    if (e.detail === doSort) { doSortDir = doSortDir === 'desc' ? 'asc' : 'desc'; }
     else { doSort = e.detail; doSortDir = 'desc'; }
     render();
   }, { once: false });
@@ -5433,7 +5477,7 @@ let ragUnit = 'M';
 let ragSort = null;
 let ragSortDir = 'desc';
 let ragView = 'numbers';
-let ragFilter = null;
+let ragFilter = null; // null | 'absent' | 'most-data'
 
 function buildRagnarokSection() {
   const el = document.getElementById('section-ragnarok');
@@ -5474,11 +5518,23 @@ function buildRagnarokSection() {
   const THRESH = null, HAS_THRESH = false;
 
   const META_COLS = ['name','joined','might','hero','avg','delta','trend','thresh'];
-  const sortCol = (ragSort && (PERIODS.indexOf(ragSort) !== -1 || META_COLS.indexOf(ragSort) !== -1))
-    ? ragSort : lastPeriod;
 
   function getVal(map, ps) {
     return (ps in map) ? map[ps] : null;
+  }
+
+  function ragDataCount(map) {
+    let n = 0;
+    PERIODS.forEach(function(k) {
+      const v = getVal(map, k);
+      if (v !== null && v > 0) n++;
+    });
+    return n;
+  }
+  const RAG_MOST_DATA_MIN = Math.max(1, Math.ceil(PERIODS.length * 0.5));
+  function isRagMostDataCohort(map) {
+    const cur = getVal(map, lastPeriod);
+    return cur !== null && cur > 0 && ragDataCount(map) >= RAG_MOST_DATA_MIN;
   }
 
   function fmtVal(val) {
@@ -5575,6 +5631,12 @@ function buildRagnarokSection() {
   }
 
   function render() {
+    const sortCol = (ragFilter === 'most-data')
+      ? 'avg'
+      : ((ragSort && (PERIODS.indexOf(ragSort) !== -1 || META_COLS.indexOf(ragSort) !== -1))
+          ? ragSort : lastPeriod);
+    const sortDir = (ragFilter === 'most-data') ? 'desc' : ragSortDir;
+
     let members = MEMBERS.map(function(m, idx) {
       return { m: m, map: scoreMap(m.name), idx: idx };
     });
@@ -5592,17 +5654,11 @@ function buildRagnarokSection() {
       if (col === 'thresh') return getVal(map, lastPeriod) != null ? getVal(map, lastPeriod) : -1;
       if (col === 'trend') { const vs = PERIODS.map(function(k){return getVal(map,k);}).filter(function(v){return v!==null;}); if (vs.length<2) return 0; return vs[vs.length-1]/(vs[vs.length-2]||1); }
       if (col === 'joined') return m.joined || 'zzzz';
-      if (col === 'might')  return m.might != null ? m.might : -1;
       if (col === 'hero')   return m.hero != null ? m.hero : -1;
+      if (col === 'might')  return m.might != null ? m.might : -1;
       if (col === 'name')   return m.name.toLowerCase();
       return -1;
     }
-    members.sort(function(a, b) {
-      const av = sortVal(a, sortCol), bv = sortVal(b, sortCol);
-      const asc = ragSortDir === 'asc';
-      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
-      return asc ? av - bv : bv - av;
-    });
 
     const lastVals    = MEMBERS.map(function(m){ return getVal(scoreMap(m.name), lastPeriod); });
     const absentCount = lastVals.filter(function(v){ return v === null || v === 0; }).length;
@@ -5610,19 +5666,44 @@ function buildRagnarokSection() {
 
     if (ragFilter === 'absent') members = members.filter(function(row){ const v=getVal(row.map,lastPeriod); return v===null||v===0; });
 
+    members.sort(function(a, b) {
+      if (ragFilter === 'most-data') {
+        const aTop = isRagMostDataCohort(a.map) ? 1 : 0;
+        const bTop = isRagMostDataCohort(b.map) ? 1 : 0;
+        if (bTop !== aTop) return bTop - aTop;
+        const av = sortVal(a, 'avg'), bv = sortVal(b, 'avg');
+        if (bv !== av) return bv - av;
+        const ac = ragDataCount(a.map), bc = ragDataCount(b.map);
+        if (bc !== ac) return bc - ac;
+        return a.m.name.localeCompare(b.m.name);
+      }
+      const av = sortVal(a, sortCol), bv = sortVal(b, sortCol);
+      const asc = sortDir === 'asc';
+      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
+      return asc ? av - bv : bv - av;
+    });
+
+    const gridCount = members.length;
+    const topCohortCount = members.filter(function(row){ return isRagMostDataCohort(row.map); }).length;
     const globalMax = Math.max.apply(null, members.flatMap(function(row){ return PERIODS.map(function(k){ return getVal(row.map,k) || 0; }); }).concat([0]));
 
-    function chip(label, val, countVal, cls) {
+    function chip(label, val, countVal, cls, tip) {
       const active = ragFilter === val;
       const filterEvt = "document.dispatchEvent(new CustomEvent('rag-filter',{detail:'" + val + "'}))";
       const border = active ? 'border-color:var(--gold);box-shadow:0 0 0 1px rgba(201,165,91,.2);' : '';
-      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '">'
+      const tipAttr = tip ? ' data-tip="' + tip.replace(/"/g, '&quot;') + '"' : '';
+      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '"' + tipAttr + '>'
         + '<div class="chip-label">' + label + '</div>'
         + '<div class="chip-value">' + countVal + '</div></div>';
     }
 
+    const mostDataTip = 'Sort only — shows all ' + gridCount + ' grid rows. '
+      + topCohortCount + ' full-history (current + ≥' + RAG_MOST_DATA_MIN + '/' + PERIODS.length
+      + ' periods) first by avg desc; rest underneath.';
+
     const kpiHtml = '<div class="kpi-chips">'
-      + chip('Members', null, MEMBERS.length, ragFilter===null?'chip-met':'')
+      + chip('Members', null, gridCount, ragFilter===null?'chip-met':'', 'Rows currently in the grid')
+      + chip('Most data', 'most-data', gridCount, ragFilter==='most-data'?'chip-met':'', mostDataTip)
       + chip('Absent (last)', 'absent', absentCount, 'chip-zero')
       + '<div class="kpi-chip" style="cursor:default"><div class="chip-label">Top (last)</div>'
       + '<div class="chip-value" style="font-size:.75rem;max-width:90px;overflow:hidden;text-overflow:ellipsis">'
@@ -5631,7 +5712,7 @@ function buildRagnarokSection() {
     function th(label, col, opts) {
       opts = opts || {};
       const active  = sortCol === col;
-      const arrow   = active ? (ragSortDir === 'asc' ? ' ▴' : ' ▾') : '';
+      const arrow   = active ? (sortDir === 'asc' ? ' ▴' : ' ▾') : '';
       const color   = active ? 'color:var(--gold);' : '';
       const bg      = opts.bg || '';
       const tip     = opts.tip ? ' data-tip="' + opts.tip + '"' : '';
@@ -5697,6 +5778,9 @@ function buildRagnarokSection() {
       + '<button class="vt-btn ' + (ragView==='numbers'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'rag-view\',{detail:\'numbers\'}))">Numbers</button>'
       + '<button class="vt-btn ' + (ragView==='chart'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'rag-view\',{detail:\'chart\'}))">Chart</button>'
       + '</div>'
+      + '<div class="view-toggle" data-tip="' + mostDataTip.replace(/"/g, '&quot;') + '">'
+      + '<button class="vt-btn ' + (ragFilter==='most-data'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'rag-filter\',{detail:\'most-data\'}))">Most data (' + gridCount + ')</button>'
+      + '</div>'
       + (ragView==='numbers'
         ? '<div class="view-toggle">'
           + '<button class="vt-btn ' + (ragUnit==='M'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'rag-unit\',{detail:\'M\'}))">M</button>'
@@ -5704,7 +5788,9 @@ function buildRagnarokSection() {
           + '</div>'
         : '')
       + '</div></div>'
-      + '<div class="roa-hint" style="margin-bottom:10px">Ragnarök tournament points per member · ' + PERIODS.length + ' active period' + (PERIODS.length!==1?'s':'') + (ragFilter ? ' · Filtered: ' + ragFilter : '') + '</div>'
+      + '<div class="roa-hint" style="margin-bottom:10px">Ragnarök tournament points per member · ' + PERIODS.length + ' active period' + (PERIODS.length!==1?'s':'')
+      + (ragFilter === 'most-data' ? ' · Most data sort · ' + gridCount + ' rows' : (ragFilter ? ' · Filtered: ' + ragFilter + ' · ' + gridCount + ' rows' : ' · ' + gridCount + ' rows'))
+      + '</div>'
       + '<table class="matrix"><thead><tr>'
       + '<th class="rn">#</th>'
       + th('Member', 'name', {left:true, minW:'160px'})
@@ -5720,7 +5806,7 @@ function buildRagnarokSection() {
   }
 
   document.addEventListener('rag-sort',   function(e) {
-    if (e.detail === sortCol) { ragSortDir = ragSortDir === 'desc' ? 'asc' : 'desc'; }
+    if (e.detail === ragSort) { ragSortDir = ragSortDir === 'desc' ? 'asc' : 'desc'; }
     else { ragSort = e.detail; ragSortDir = 'desc'; }
     render();
   }, { once: false });
@@ -5850,7 +5936,7 @@ let tooUnit = 'M';
 let tooSort = null;
 let tooSortDir = 'desc';
 let tooView = 'numbers';
-let tooFilter = null;
+let tooFilter = null; // null | 'absent' | 'most-data'
 
 function buildTrialsSection() {
   const el = document.getElementById('section-trials-of-olympus');
@@ -5891,11 +5977,23 @@ function buildTrialsSection() {
   const THRESH = null, HAS_THRESH = false;
 
   const META_COLS = ['name','joined','might','hero','avg','delta','trend','thresh'];
-  const sortCol = (tooSort && (PERIODS.indexOf(tooSort) !== -1 || META_COLS.indexOf(tooSort) !== -1))
-    ? tooSort : lastPeriod;
 
   function getVal(map, ps) {
     return (ps in map) ? map[ps] : null;
+  }
+
+  function tooDataCount(map) {
+    let n = 0;
+    PERIODS.forEach(function(k) {
+      const v = getVal(map, k);
+      if (v !== null && v > 0) n++;
+    });
+    return n;
+  }
+  const TOO_MOST_DATA_MIN = Math.max(1, Math.ceil(PERIODS.length * 0.5));
+  function isTooMostDataCohort(map) {
+    const cur = getVal(map, lastPeriod);
+    return cur !== null && cur > 0 && tooDataCount(map) >= TOO_MOST_DATA_MIN;
   }
 
   function fmtVal(val) {
@@ -5992,6 +6090,12 @@ function buildTrialsSection() {
   }
 
   function render() {
+    const sortCol = (tooFilter === 'most-data')
+      ? 'avg'
+      : ((tooSort && (PERIODS.indexOf(tooSort) !== -1 || META_COLS.indexOf(tooSort) !== -1))
+          ? tooSort : lastPeriod);
+    const sortDir = (tooFilter === 'most-data') ? 'desc' : tooSortDir;
+
     let members = MEMBERS.map(function(m, idx) {
       return { m: m, map: scoreMap(m.name), idx: idx };
     });
@@ -6014,12 +6118,6 @@ function buildTrialsSection() {
       if (col === 'name')   return m.name.toLowerCase();
       return -1;
     }
-    members.sort(function(a, b) {
-      const av = sortVal(a, sortCol), bv = sortVal(b, sortCol);
-      const asc = tooSortDir === 'asc';
-      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
-      return asc ? av - bv : bv - av;
-    });
 
     const lastVals    = MEMBERS.map(function(m){ return getVal(scoreMap(m.name), lastPeriod); });
     const absentCount = lastVals.filter(function(v){ return v === null || v === 0; }).length;
@@ -6027,19 +6125,44 @@ function buildTrialsSection() {
 
     if (tooFilter === 'absent') members = members.filter(function(row){ const v=getVal(row.map,lastPeriod); return v===null||v===0; });
 
+    members.sort(function(a, b) {
+      if (tooFilter === 'most-data') {
+        const aTop = isTooMostDataCohort(a.map) ? 1 : 0;
+        const bTop = isTooMostDataCohort(b.map) ? 1 : 0;
+        if (bTop !== aTop) return bTop - aTop;
+        const av = sortVal(a, 'avg'), bv = sortVal(b, 'avg');
+        if (bv !== av) return bv - av;
+        const ac = tooDataCount(a.map), bc = tooDataCount(b.map);
+        if (bc !== ac) return bc - ac;
+        return a.m.name.localeCompare(b.m.name);
+      }
+      const av = sortVal(a, sortCol), bv = sortVal(b, sortCol);
+      const asc = sortDir === 'asc';
+      if (sortCol === 'joined' || sortCol === 'name') return asc ? (av<bv?-1:av>bv?1:0) : (av>bv?-1:av<bv?1:0);
+      return asc ? av - bv : bv - av;
+    });
+
+    const gridCount = members.length;
+    const topCohortCount = members.filter(function(row){ return isTooMostDataCohort(row.map); }).length;
     const globalMax = Math.max.apply(null, members.flatMap(function(row){ return PERIODS.map(function(k){ return getVal(row.map,k) || 0; }); }).concat([0]));
 
-    function chip(label, val, countVal, cls) {
+    function chip(label, val, countVal, cls, tip) {
       const active = tooFilter === val;
       const filterEvt = "document.dispatchEvent(new CustomEvent('too-filter',{detail:'" + val + "'}))";
       const border = active ? 'border-color:var(--gold);box-shadow:0 0 0 1px rgba(201,165,91,.2);' : '';
-      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '">'
+      const tipAttr = tip ? ' data-tip="' + tip.replace(/"/g, '&quot;') + '"' : '';
+      return '<div class="kpi-chip ' + cls + '" style="cursor:pointer;' + border + '" onclick="' + filterEvt + '"' + tipAttr + '>'
         + '<div class="chip-label">' + label + '</div>'
         + '<div class="chip-value">' + countVal + '</div></div>';
     }
 
+    const mostDataTip = 'Sort only — shows all ' + gridCount + ' grid rows. '
+      + topCohortCount + ' full-history (current + ≥' + TOO_MOST_DATA_MIN + '/' + PERIODS.length
+      + ' periods) first by avg desc; rest underneath.';
+
     const kpiHtml = '<div class="kpi-chips">'
-      + chip('Members', null, MEMBERS.length, tooFilter===null?'chip-met':'')
+      + chip('Members', null, gridCount, tooFilter===null?'chip-met':'', 'Rows currently in the grid')
+      + chip('Most data', 'most-data', gridCount, tooFilter==='most-data'?'chip-met':'', mostDataTip)
       + chip('Absent (last)', 'absent', absentCount, 'chip-zero')
       + '<div class="kpi-chip" style="cursor:default"><div class="chip-label">Top (last)</div>'
       + '<div class="chip-value" style="font-size:.75rem;max-width:90px;overflow:hidden;text-overflow:ellipsis">'
@@ -6048,7 +6171,7 @@ function buildTrialsSection() {
     function th(label, col, opts) {
       opts = opts || {};
       const active  = sortCol === col;
-      const arrow   = active ? (tooSortDir === 'asc' ? ' ▴' : ' ▾') : '';
+      const arrow   = active ? (sortDir === 'asc' ? ' ▴' : ' ▾') : '';
       const color   = active ? 'color:var(--gold);' : '';
       const bg      = opts.bg || '';
       const tip     = opts.tip ? ' data-tip="' + opts.tip + '"' : '';
@@ -6114,6 +6237,9 @@ function buildTrialsSection() {
       + '<button class="vt-btn ' + (tooView==='numbers'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'too-view\',{detail:\'numbers\'}))">Numbers</button>'
       + '<button class="vt-btn ' + (tooView==='chart'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'too-view\',{detail:\'chart\'}))">Chart</button>'
       + '</div>'
+      + '<div class="view-toggle" data-tip="' + mostDataTip.replace(/"/g, '&quot;') + '">'
+      + '<button class="vt-btn ' + (tooFilter==='most-data'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'too-filter\',{detail:\'most-data\'}))">Most data (' + gridCount + ')</button>'
+      + '</div>'
       + (tooView==='numbers'
         ? '<div class="view-toggle">'
           + '<button class="vt-btn ' + (tooUnit==='M'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'too-unit\',{detail:\'M\'}))">M</button>'
@@ -6121,7 +6247,9 @@ function buildTrialsSection() {
           + '</div>'
         : '')
       + '</div></div>'
-      + '<div class="roa-hint" style="margin-bottom:10px">Trials of Olympus tournament points per member · ' + PERIODS.length + ' active period' + (PERIODS.length!==1?'s':'') + (tooFilter ? ' · Filtered: ' + tooFilter : '') + '</div>'
+      + '<div class="roa-hint" style="margin-bottom:10px">Trials of Olympus tournament points per member · ' + PERIODS.length + ' active period' + (PERIODS.length!==1?'s':'')
+      + (tooFilter === 'most-data' ? ' · Most data sort · ' + gridCount + ' rows' : (tooFilter ? ' · Filtered: ' + tooFilter + ' · ' + gridCount + ' rows' : ' · ' + gridCount + ' rows'))
+      + '</div>'
       + '<table class="matrix"><thead><tr>'
       + '<th class="rn">#</th>'
       + th('Member', 'name', {left:true, minW:'160px'})
@@ -6137,7 +6265,7 @@ function buildTrialsSection() {
   }
 
   document.addEventListener('too-sort',   function(e) {
-    if (e.detail === sortCol) { tooSortDir = tooSortDir === 'desc' ? 'asc' : 'desc'; }
+    if (e.detail === tooSort) { tooSortDir = tooSortDir === 'desc' ? 'asc' : 'desc'; }
     else { tooSort = e.detail; tooSortDir = 'desc'; }
     render();
   }, { once: false });
