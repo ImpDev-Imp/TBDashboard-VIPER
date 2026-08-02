@@ -4514,11 +4514,6 @@ function buildRoaSection() {
       return v > best.v ? { v: v, name: m.name } : best;
     }, { v: 0, name: '—' });
 
-    // Cohort size for the chip/toggle label only — does not exclude anyone
-    const mostDataCount = MEMBERS.filter(function(m) {
-      return isMostDataCohort(scoreMap(m.name));
-    }).length;
-
     if (roaFilter === 'met')    members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v!==null&&v>0&&HAS_THRESH&&v>=THRESH; });
     if (roaFilter === 'below')  members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v!==null&&v>0&&HAS_THRESH&&v<THRESH; });
     if (roaFilter === 'absent') members = members.filter(function(row){ const v=getRoa(row.map,lastPeriod); return v===null||v===0; });
@@ -4542,6 +4537,11 @@ function buildRoaSection() {
       return asc ? av - bv : bv - av;
     });
 
+    // Labels must match rows actually rendered in the grid (search + real filters).
+    // Most-data is sort-only, so this is the full visible list — never the old "54 cohort".
+    const gridCount = members.length;
+    const topCohortCount = members.filter(function(row){ return isMostDataCohort(row.map); }).length;
+
     const globalMax = Math.max.apply(null, members.flatMap(function(row){
       return PERIODS.map(function(k){ return getRoa(row.map,k) || 0; });
     }).concat([0]));
@@ -4556,12 +4556,14 @@ function buildRoaSection() {
         + '<div class="chip-value">' + countVal + '</div></div>';
     }
 
-    const mostDataTip = 'Sort only — does not hide anyone. Members with current RoA and ≥'
-      + MOST_DATA_MIN + '/' + PERIODS.length + ' periods first (avg desc); rest underneath (avg desc).';
+    const mostDataTip = 'Sort only — shows all ' + gridCount + ' grid rows. '
+      + topCohortCount + ' full-history (current + ≥' + MOST_DATA_MIN + '/' + PERIODS.length
+      + ' periods) rank first by avg desc; remaining ' + (gridCount - topCohortCount) + ' underneath.';
 
     const kpiHtml = '<div class="kpi-chips">'
-      + chip('Members', null, MEMBERS.length, roaFilter===null?'chip-met':'')
-      + chip('Most data', 'most-data', mostDataCount, roaFilter==='most-data'?'chip-met':'', mostDataTip)
+      + chip('Members', null, gridCount, roaFilter===null?'chip-met':'',
+          'Rows currently in the RoA grid' + (searchTerm ? ' (search active)' : ''))
+      + chip('Most data', 'most-data', gridCount, roaFilter==='most-data'?'chip-met':'', mostDataTip)
       + (HAS_THRESH && metCount!==null   ? chip('Met (last)',   'met',    metCount,    'chip-met')   : '')
       + (HAS_THRESH && belowCount!==null ? chip('Below (last)', 'below',  belowCount,  'chip-below') : '')
       + chip('Absent (last)', 'absent', absentCount, 'chip-zero')
@@ -4646,8 +4648,9 @@ function buildRoaSection() {
       : '';
     const sourceHint = usingFallback ? ' · 5-period fallback' : ' · full DB history';
     const filterHint = roaFilter === 'most-data'
-      ? ' · Most data sort: full-history cohort first (avg desc) · all ' + members.length + ' members kept'
-      : (roaFilter ? ' · Filtered: ' + roaFilter : '');
+      ? ' · Most data sort · ' + gridCount + ' rows in grid · '
+        + topCohortCount + ' full-history first, then rest (avg desc)'
+      : (roaFilter ? ' · Filtered: ' + roaFilter + ' · ' + gridCount + ' rows' : '');
 
     el.innerHTML =
       '<div style="display:flex;align-items:center;justify-content:space-between;padding:0 0 10px;gap:12px;flex-wrap:wrap">'
@@ -4658,7 +4661,7 @@ function buildRoaSection() {
       + '<button class="vt-btn ' + (roaView==='chart'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'roa-view\',{detail:\'chart\'}))">Chart</button>'
       + '</div>'
       + '<div class="view-toggle" data-tip="' + mostDataTip.replace(/"/g, '&quot;') + '">'
-      + '<button class="vt-btn ' + (roaFilter==='most-data'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'roa-filter\',{detail:\'most-data\'}))">Most data (' + mostDataCount + ')</button>'
+      + '<button class="vt-btn ' + (roaFilter==='most-data'?'active':'') + '" onclick="document.dispatchEvent(new CustomEvent(\'roa-filter\',{detail:\'most-data\'}))">Most data (' + gridCount + ')</button>'
       + '</div>'
       + (roaView==='numbers'
         ? '<div class="view-toggle">'
