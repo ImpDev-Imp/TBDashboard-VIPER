@@ -1624,7 +1624,7 @@ document.addEventListener('click', ()=>{
   document.getElementById('exportMenu')?.classList.remove('open');
 });
 
-function exportCSV(mode){
+function exportCSV(mode){ /* CSV_EXPORT_VERSION chests_points 2026-08-05 15:50:27 */
   const isAll = mode==='all';
   const activePeriods = isAll ? PERIOD_KEYS : [globalPeriod];
   const rows = [];
