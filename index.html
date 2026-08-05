@@ -854,8 +854,8 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       <div class="export-wrap" id="exportWrap">
         <button class="export-btn" onclick="toggleExport(event)">↓ Export ▾</button>
         <div class="export-menu" id="exportMenu">
-          <div class="export-item" onclick="exportCSV('view')">Current view (CSV)</div>
-          <div class="export-item" onclick="exportCSV('all')">All periods (CSV)</div>
+          <div class="export-item" onclick="exportCSV('view')">Current view (CSV) · Chests + Points</div>
+          <div class="export-item" onclick="exportCSV('all')">All periods (CSV) · Chests + Points</div>
         </div>
       </div>
       <!-- Sync -->
@@ -1652,7 +1652,7 @@ function exportCSV(mode){
   const blob = new Blob([rows.join('\n')], {type:'text/csv'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'TBDashboard_'+currentClan+'_'+(isAll?'AllPeriods':PERIOD_LABELS[globalPeriod])+'.csv';
+  a.download = 'TBDashboard_'+currentClan+'_'+(isAll?'AllPeriods':PERIOD_LABELS[globalPeriod])+'_ChestsPoints.csv';
   a.click();
   document.getElementById('exportMenu').classList.remove('open');
 }
