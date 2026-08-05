@@ -1127,7 +1127,21 @@ function heatClass(norm,status){
 }
 function gClass(g){return{G9:'g9',G8:'g8',G7:'g7',G6:'g6',G5:'g5',G1:'g1'}[g]||'g1';}
 function fmt(n){if(n===null||n===undefined)return '—'; return n.toFixed(2)+'%';}
-function fmtPts(n){if(!n)return '0'; if(n>=1000000)return (n/1000000).toFixed(1)+'M'; if(n>=1000)return (n/1000).toFixed(0)+'K'; return n.toString();}
+// Compact points display. Do NOT use toFixed(0) on /1000 — 27501 became "28K"
+// while CT shows ~27k. Use 1 decimal under 100k so 27.5K matches CT better.
+function fmtPts(n){
+  if(!n)return '0';
+  const v = Number(n);
+  if(!isFinite(v))return '0';
+  if(v>=1000000)return (v/1000000).toFixed(1)+'M';
+  if(v>=100000)return Math.round(v/1000)+'K'; // 100K+ keep whole K
+  if(v>=1000){
+    const k = v/1000;
+    // strip trailing .0
+    return (Math.abs(k-Math.round(k))<1e-9 ? String(Math.round(k)) : k.toFixed(1)) + 'K';
+  }
+  return String(Math.round(v));
+}
 function fmtNum(n){if(n==null||n==='')return '—'; return Number(n).toLocaleString();}
 
 // ── PERFORMANCE SPARKLINE (chart mode) ──
@@ -1279,7 +1293,10 @@ function buildTable(){
       const st     = (pd && chests>0) ? (pd.status || 'absent') : 'absent';
       const col    = _ST_COL[st] || 'var(--text-faint)';
       const bg     = _ST_BG[st]  || 'transparent';
-      const normTip= norm!=null ? Math.round(norm*100)+'% Norm · '+chests+' chests' : 'Absent';
+      const ptsExact = points ? Number(points).toLocaleString() : '0';
+      const normTip= norm!=null
+        ? ptsExact+' pts · '+chests+' chests · '+Math.round(norm*100)+'% Norm'
+        : 'Absent';
       if(st==='absent'){
         const dash=`<td style="text-align:center"><span style="color:var(--text-faint);font-family:var(--fm);font-size:.6rem">—</span></td>`;
         return [dash,dash];
@@ -2328,7 +2345,7 @@ function buildWorstSection() {
       <td style="font-family:var(--fm);font-size:.65rem;color:var(--text-muted);text-align:center">${fmtNum(m.hero)}</td>
       <td style="font-family:var(--fm);font-size:11px;color:${scol};font-weight:600;text-align:center">${m.norm?m.norm.toFixed(2)+'%':'0%'}</td>
       <td style="font-family:var(--fm);font-size:11px;color:var(--text-muted);text-align:center">${m.chests||0}</td>
-      <td style="font-family:var(--fm);font-size:11px;color:var(--text-muted);text-align:center">${m.points?(m.points/1000).toFixed(0)+'K':'0'}</td>
+      <td style="font-family:var(--fm);font-size:11px;color:var(--text-muted);text-align:center">${m.points?fmtPts(m.points):'0'}</td>
       <td style="text-align:center"><div class="pips">${pips}</div></td>
       <td style="text-align:center">${trendHtml}</td>
       <td style="text-align:center"><span class="flag-badge flag-${m.flag}">${FLAG_LABELS[m.flag]}</span></td>
