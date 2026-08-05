@@ -1624,14 +1624,22 @@ document.addEventListener('click', ()=>{
   document.getElementById('exportMenu')?.classList.remove('open');
 });
 
-function exportCSV(mode){ /* CSV_EXPORT_VERSION chests_points 2026-08-05 15:50:27 */
+function exportCSV(mode){
   const isAll = mode==='all';
   const activePeriods = isAll ? PERIOD_KEYS : [globalPeriod];
   const rows = [];
+  // Excel misreads UTF-8 en/em dashes as â€" — use ASCII hyphen in CSV only.
+  // Also strip other non-ASCII that breaks Windows Excel without BOM.
+  function csvSafe(s) {
+    return String(s == null ? '' : s)
+      .replace(/[\u2013\u2014\u2212]/g, '-')  // en-dash, em-dash, minus → hyphen
+      .replace(/[\u2018\u2019]/g, "'")       // curly single quotes
+      .replace(/[\u201C\u201D]/g, '"');      // curly double quotes
+  }
   // Header — raw Chests + Points per period (not Norm%)
   const hdr = ['G','Member','Joined','Might','Hero'];
   activePeriods.forEach(p=>{
-    const lab = PERIOD_LABELS[p]+' ('+(PERIOD_DATES[p]||'')+')';
+    const lab = csvSafe(PERIOD_LABELS[p]+' ('+(PERIOD_DATES[p]||'')+')');
     hdr.push(lab+' Chests', lab+' Points');
   });
   hdr.push('Status');
@@ -1646,13 +1654,15 @@ function exportCSV(mode){ /* CSV_EXPORT_VERSION chests_points 2026-08-05 15:50:2
       if (!pd) { cells.push('',''); return; }
       cells.push(pd.chests!=null?pd.chests:'', pd.points!=null?pd.points:'');
     });
-    rows.push([m.g, '"'+m.name+'"', m.joined||'', m.might||'', m.hero||'',
-      ...cells, STATUS_LABELS[st]||st].join(','));
+    // Quote member name; keep status ASCII-safe
+    rows.push([m.g, '"'+String(m.name||'').replace(/"/g,'""')+'"', m.joined||'', m.might||'', m.hero||'',
+      ...cells, csvSafe(STATUS_LABELS[st]||st)].join(','));
   });
-  const blob = new Blob([rows.join('\n')], {type:'text/csv'});
+  // UTF-8 BOM so Excel opens the file as UTF-8 (names with accents stay correct)
+  const blob = new Blob(['\uFEFF' + rows.join('\n')], {type:'text/csv;charset=utf-8'});
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = 'TBDashboard_'+currentClan+'_'+(isAll?'AllPeriods':PERIOD_LABELS[globalPeriod])+'_ChestsPoints.csv';
+  a.download = 'TBDashboard_'+currentClan+'_'+(isAll?'AllPeriods':csvSafe(PERIOD_LABELS[globalPeriod]))+'_ChestsPoints.csv';
   a.click();
   document.getElementById('exportMenu').classList.remove('open');
 }
