@@ -883,7 +883,10 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
 .esc-sec-title{font-family:var(--fd);font-size:.62rem;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:var(--gold);margin:0 0 8px;}
 .esc-grid3{display:grid;grid-template-columns:1.4fr .8fr .8fr;gap:6px;align-items:center;margin-bottom:6px;}
 .esc-grid2{display:grid;grid-template-columns:1.5fr 1fr;gap:6px;align-items:center;margin-bottom:6px;}
-.esc-gridm{display:grid;grid-template-columns:1.5fr .7fr .45fr;gap:6px;align-items:center;margin-bottom:5px;}
+.esc-merc-grid{display:grid;grid-template-columns:minmax(0,1.55fr) 4.6rem 2.6rem;gap:6px 7px;align-items:center;}
+.esc-merc-name{display:flex;gap:8px;align-items:center;min-width:0;font-family:var(--fb);font-size:.78rem;color:var(--text);}
+.esc-merc-grid .esc-head{padding-bottom:2px;}
+.esc-merc-grid input:not([type=checkbox]){width:100%;min-width:0;text-align:right;}
 .esc-side label{font-family:var(--fb);font-size:.78rem;color:var(--text);}
 .esc-head{font-family:var(--fm);font-size:.52rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);}
 #section-event-calc{color-scheme:dark;}
@@ -1088,7 +1091,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       </div>
     </div>
     <div class="panel-footer">
-      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c26</span></div>
+      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c27</span></div>
     </div>
   </div>
 
@@ -1152,8 +1155,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
             </section>
             <section class="esc-sec">
               <div class="esc-sec-title">Mercenaries</div>
-              <div class="esc-gridm"><span class="esc-head">Available</span><span class="esc-head">Special</span><span class="esc-head">Stacks</span></div>
-              <div id="escMercGrid"></div>
+              <div class="esc-merc-grid" id="escMercGrid"></div>
               <div class="esc-hint">Stacks follow the workbook: 4 for standard groups and 1 for the two special groups when available.</div>
             </section>
             <section class="esc-sec">
@@ -7330,12 +7332,14 @@ function escEnsureInit(){
   escFillTiers('esc_guards_max','G'); escFillTiers('esc_guards_min','G');
   escFillTiers('esc_specs_max','S'); escFillTiers('esc_specs_min','S');
   escFillTiers('esc_monsters_max','M'); escFillTiers('esc_monsters_min','M');
-  esc$('escMercGrid').innerHTML = EPIC_STACK_MERCS.map(function(row){
-    const label = row[0], k = row[1];
-    return '<label class="esc-gridm" style="display:contents"><span style="display:flex;gap:8px;align-items:center">'
-      +'<input type="checkbox" id="esc_'+k+'">'+label+'</span>'
-      +'<input id="esc_'+k+'_damage"><input id="esc_'+k+'_stacks" readonly value="0"></label>';
-  }).join('');
+  esc$('escMercGrid').innerHTML =
+    '<span class="esc-head">Available</span><span class="esc-head">Special</span><span class="esc-head">Stacks</span>'
+    + EPIC_STACK_MERCS.map(function(row){
+      const label = row[0], k = row[1];
+      return '<label class="esc-merc-name"><input type="checkbox" id="esc_'+k+'">'+label+'</label>'
+        +'<input id="esc_'+k+'_damage" inputmode="decimal">'
+        +'<input id="esc_'+k+'_stacks" readonly value="0">';
+    }).join('');
   EPIC_STACK_MERCS.forEach(function(row){
     esc$('esc_'+row[1]).addEventListener('change', escSyncMercStacks);
   });
