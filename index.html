@@ -942,7 +942,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
 .esc-death td{background:#6e2929!important;color:#f5e6c8!important;}
 .esc-table tr.esc-death:hover td{background:#7a3232!important;}
 .esc-sim-hint{font-family:var(--fm);font-size:.55rem;color:var(--text-faint);padding:6px 10px 0;}
-#esc_profileFile{display:none;}
+
 @media (max-width:1100px){.esc-layout{grid-template-columns:1fr;}.esc-side{max-height:420px;}.esc-metrics{grid-template-columns:repeat(2,1fr);}}
 </style>
 </head>
@@ -1094,7 +1094,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       </div>
     </div>
     <div class="panel-footer">
-      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c30</span></div>
+      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c31</span></div>
     </div>
   </div>
 
@@ -1184,9 +1184,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
               <div class="esc-grid2"><label>Name</label><input id="esc_profileName" placeholder="e.g. Skadi 607k"></div>
               <select id="esc_savedStacks" style="margin-top:8px"><option value="">Choose a saved setup...</option></select>
               <div class="esc-grid2" style="margin-top:8px"><button class="esc-btn" type="button" id="esc_saveNamed">Save</button><button class="esc-btn" type="button" id="esc_deleteNamed">Delete selected</button></div>
-              <div class="esc-grid2" style="margin-top:8px"><button class="esc-btn" type="button" id="esc_saveProfile">Export file</button><button class="esc-btn" type="button" id="esc_loadProfile">Import file</button></div>
-              <input class="file-input" type="file" id="esc_profileFile" accept="application/json,.json">
-              <div class="esc-hint" id="esc_saveHint">Named setups save to VIPER SQLite on this PC. File export is a backup. Does not overwrite locked 3Captain JSON.</div>
+              <div class="esc-hint" id="esc_saveHint">Named setups save to VIPER SQLite on this PC. Pick a name from the list to load it. Does not overwrite locked 3Captain JSON.</div>
             </section>
             <button class="esc-btn primary" type="button" id="esc_calculate">Calculate stacks</button>
             <button class="esc-btn" type="button" id="esc_restore" style="margin-top:6px">Restore workbook defaults</button>
@@ -7224,8 +7222,8 @@ function escFillSavedMenu(items, selected){
   const hint = esc$('esc_saveHint');
   if (hint) {
     hint.textContent = escSqlOnline
-      ? 'Named setups save to VIPER SQLite on this PC. File export is a backup. Does not overwrite locked 3Captain JSON.'
-      : 'VIPER SQLite is offline — setups stay in this browser until SQL is reachable. File export still works.';
+      ? 'Named setups save to VIPER SQLite on this PC. Pick a name from the list to load it. Does not overwrite locked 3Captain JSON.'
+      : 'VIPER SQLite is offline — setups stay in this browser until SQL is reachable.';
   }
 }
 async function escSqlFetch(path, opts){
@@ -7449,43 +7447,6 @@ function escEnsureInit(){
       esc$('esc_profileName').value = name;
       escApplySettings(item);
       escToast('Loaded "'+name+'"');
-    }
-  };
-  esc$('esc_saveProfile').onclick = function(){
-    const payload = {
-      app: 'EPIC Stack Calculator',
-      version: 2,
-      exported_at: new Date().toISOString(),
-      saved_stacks: escSavedMap,
-      current_settings: escSettings()
-    };
-    escDownload('epic-stack-profiles.json', JSON.stringify(payload, null, 2), 'application/json');
-    escToast('Profile file saved');
-  };
-  esc$('esc_loadProfile').onclick = function(){ esc$('esc_profileFile').click(); };
-  esc$('esc_profileFile').onchange = async function(event){
-    const file = event.target.files && event.target.files[0];
-    if (!file) return;
-    try {
-      const parsed = JSON.parse(await file.text());
-      const imported = parsed.saved_stacks != null ? parsed.saved_stacks : parsed;
-      if (!imported || typeof imported !== 'object' || Array.isArray(imported)) {
-        throw Error('This is not an EPIC Stack profile file.');
-      }
-      const entries = Object.entries(imported).filter(function(pair){
-        return pair[0].trim() && pair[1] && typeof pair[1] === 'object' && !Array.isArray(pair[1]);
-      }).slice(0, 500);
-      const merged = Object.assign({}, escReadSaved(), Object.fromEntries(entries));
-      escWriteSaved(merged);
-      escRefreshSaved();
-      if (parsed.current_settings && typeof parsed.current_settings === 'object') {
-        escApplySettings(parsed.current_settings);
-      }
-      escToast('Loaded '+entries.length+' saved setup'+(entries.length===1?'':'s'));
-    } catch (e) {
-      alert('Profile could not be loaded: ' + e.message);
-    } finally {
-      event.target.value = '';
     }
   };
   esc$('esc_calculate').onclick = escRun;
