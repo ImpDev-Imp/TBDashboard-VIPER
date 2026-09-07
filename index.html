@@ -933,6 +933,9 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
 .esc-pill.Authority{background:rgba(80,60,120,.35);color:#c4b0e0;}
 .esc-copy{border:1px solid var(--gold-dim);background:var(--oak-mid);color:var(--text-muted);border-radius:2px;padding:2px 8px;font-size:.58rem;cursor:pointer;}
 .esc-copy:hover{color:var(--gold);}
+.esc-table tbody tr.esc-copied td{text-decoration:line-through;opacity:.55;}
+.esc-table tbody tr.esc-copied td:nth-child(4){text-decoration:none;opacity:1;}
+.esc-table tbody tr.esc-copied .esc-copy{opacity:1;color:var(--gold);}
 .esc-foot{display:flex;gap:8px;padding:8px 10px;border-top:1px solid var(--border);flex-wrap:wrap;align-items:center;}
 .esc-foot .esc-btn{width:auto;}
 .esc-notice{margin-left:auto;font-family:var(--fm);font-size:.55rem;color:var(--text-faint);}
@@ -1091,7 +1094,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       </div>
     </div>
     <div class="panel-footer">
-      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c28</span></div>
+      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c29</span></div>
     </div>
   </div>
 
@@ -7184,6 +7187,7 @@ function buildPowerstacksSection() {
 // ── Event Calculator (Sharp engine, D-051) ──
 const ESC_STORE = 'tb-event-calc-saved-v1';
 let escLast = null;
+let escCopied = new Set();
 let escInited = false;
 function esc$(id){ return document.getElementById(id); }
 function escFmt(n){ return Number(n).toLocaleString('en-US'); }
@@ -7278,8 +7282,9 @@ function escRender(r){
   escLast = r;
   const q = escQtyMul();
   esc$('esc_stacksBody').innerHTML = r.stacks.map(function(t, i){
-    return '<tr><td class="num">'+(i+1)+'</td><td>'+t.name+'</td><td class="num"><b>'+escFmt(t.units*q)+'</b></td>'
-      +'<td><button class="esc-copy" type="button" data-esc-copy="'+i+'">Copy</button></td>'
+    const on = escCopied.has(t.name);
+    return '<tr class="'+(on?'esc-copied':'')+'"><td class="num">'+(i+1)+'</td><td>'+t.name+'</td><td class="num"><b>'+escFmt(t.units*q)+'</b></td>'
+      +'<td><button class="esc-copy" type="button" data-esc-copy="'+i+'">'+(on?'Copied':'Copy')+'</button></td>'
       +'<td>'+t.tier+'</td><td><span class="esc-pill '+t.lda+'">'+t.lda+'</span></td></tr>';
   }).join('');
   const sim = r.simulation || [];
@@ -7295,6 +7300,7 @@ function escRender(r){
   esc$('esc_sumDamage').textContent = dmg.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' B';
 }
 function escRun(){
+  escCopied = new Set();
   escSyncMercStacks();
   try {
     const s = escSettings();
@@ -7439,7 +7445,18 @@ function escEnsureInit(){
     const btn = e.target.closest('button[data-esc-copy]');
     if (!btn || !escLast) return;
     const troop = escLast.stacks[Number(btn.dataset.escCopy)];
-    escCopy(String(escShown(troop)), troop.name+' quantity copied');
+    if (!troop) return;
+    const row = btn.closest('tr');
+    if (escCopied.has(troop.name)) {
+      escCopied.delete(troop.name);
+      if (row) row.classList.remove('esc-copied');
+      btn.textContent = 'Copy';
+    } else {
+      escCopied.add(troop.name);
+      if (row) row.classList.add('esc-copied');
+      btn.textContent = 'Copied';
+      escCopy(String(escShown(troop)), troop.name+' quantity copied');
+    }
   };
   escRefreshSaved();
   escRestore();
