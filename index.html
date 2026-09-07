@@ -886,8 +886,20 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
 .esc-gridm{display:grid;grid-template-columns:1.5fr .7fr .45fr;gap:6px;align-items:center;margin-bottom:5px;}
 .esc-side label{font-family:var(--fb);font-size:.78rem;color:var(--text);}
 .esc-head{font-family:var(--fm);font-size:.52rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-faint);}
-.esc-side input,.esc-side select{width:100%;height:28px;border:1px solid var(--gold-dim);background:var(--oak-mid);color:var(--text);padding:0 7px;font-family:var(--fm);font-size:.68rem;border-radius:2px;}
-.esc-side input[type=checkbox]{width:15px;height:15px;accent-color:var(--gold);}
+#section-event-calc{color-scheme:dark;}
+.esc-side input:not([type=checkbox]),.esc-side select{width:100%;height:28px;border:1px solid var(--gold-dim);background:var(--oak-mid);color:var(--text);padding:0 7px;font-family:var(--fm);font-size:.68rem;border-radius:2px;}
+.esc-side input[type=checkbox]{
+  -webkit-appearance:none;appearance:none;
+  width:14px;height:14px;min-width:14px;margin:0;padding:0;
+  flex-shrink:0;cursor:pointer;vertical-align:middle;
+  border:1px solid var(--gold-dim);background:var(--oak);border-radius:2px;
+}
+.esc-side input[type=checkbox]:checked{
+  background-color:var(--gold-dim);border-color:var(--gold);
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath fill='none' stroke='%23C9A55B' stroke-width='2' d='M2 6.5 5 9.5 10 3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:center;background-size:10px 10px;
+}
+.esc-side input[type=checkbox]:focus-visible{outline:1px solid var(--gold);outline-offset:1px;}
 .esc-side input[readonly]{background:#1a140c;color:var(--text-faint);text-align:center;}
 .esc-hint{font-family:var(--fb);font-size:.68rem;font-style:italic;color:var(--text-faint);margin-top:6px;line-height:1.35;}
 .esc-btn{border:1px solid var(--gold-dim);background:var(--oak-mid);color:var(--text);border-radius:2px;padding:7px 10px;font-family:var(--fd);font-weight:700;letter-spacing:.5px;cursor:pointer;width:100%;}
@@ -1074,7 +1086,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       </div>
     </div>
     <div class="panel-footer">
-      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c24</span></div>
+      <div class="footer-txt">Live · 2026-09-07<br>RAW synced<br><span style="opacity:.45">v2.0 · c25</span></div>
     </div>
   </div>
 
