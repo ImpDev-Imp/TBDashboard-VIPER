@@ -1056,7 +1056,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       </div>
     </div>
     <div class="panel-footer">
-      <div class="footer-txt">Live · 2026-09-08<br>RAW synced<br><span style="opacity:.45">v2.0 · c34</span></div>
+      <div class="footer-txt">Live · 2026-09-08<br>RAW synced<br><span style="opacity:.45">v2.0 · c35</span></div>
     </div>
   </div>
 
@@ -7070,16 +7070,17 @@ function escSettings(){
   return s;
 }
 function escApplySettings(s){
-  ['guards_max','guards_min','specs_max','specs_min','monsters_max','monsters_min','leadership','dominance','epic_stacks','first_move'].forEach(function(k){
+  ['guards_max','guards_min','specs_max','specs_min','monsters_max','monsters_min','leadership','dominance','first_move'].forEach(function(k){
     if (s[k] != null && esc$('esc_'+k)) esc$('esc_'+k).value = s[k];
   });
+  if (s.epic_stacks != null && esc$('esc_epic_stacks')) esc$('esc_epic_stacks').value = String(s.epic_stacks);
   if (s.health_bonus != null) esc$('esc_health_bonus').value = (s.health_bonus * 100).toFixed(2);
   const baseStr = s.strength_bonus_base ?? s.strength_bonus ?? 0;
   esc$('esc_strength_bonus').value = (baseStr * 100).toFixed(2);
   esc$('esc_strength_against_epics').value = ((s.strength_against_epics ?? 0) * 100).toFixed(2);
   if (s.double_damage != null) esc$('esc_double_damage').value = (s.double_damage * 100).toFixed(2);
   if (s.two_squads != null) esc$('esc_two_squads').value = (s.two_squads * 100).toFixed(2);
-  esc$('esc_quantity_multiplier').value = String(s.quantity_multiplier ?? 1);
+  if (esc$('esc_quantity_multiplier')) esc$('esc_quantity_multiplier').value = String(s.quantity_multiplier ?? 1);
   EPIC_STACK_MERCS.forEach(function(row){
     const k = row[1];
     const cb = esc$('esc_'+k);
@@ -7088,10 +7089,10 @@ function escApplySettings(s){
     if (dmg) dmg.value = ((s.merc_special_damage?.[k] ?? 0) * 100).toFixed(2);
   });
   escSyncMercStacks();
-  escRun();
 }
 function escRestore(){
   escApplySettings(EpicStack.defaultSettings());
+  escRun();
 }
 function escSyncMercStacks(){
   EPIC_STACK_MERCS.forEach(function(row){
@@ -7233,7 +7234,8 @@ function escEnsureInit(){
       esc$('esc_profileName').value = name;
       if (esc$('esc_profileDesc')) esc$('esc_profileDesc').value = item.description || '';
       escApplySettings(item.settings);
-      escToast('Loaded "'+name+'"');
+      escRun();
+      escToast('Loaded "'+name+'" — stacks recalculated');
     }
   };
   esc$('esc_calculate').onclick = escRun;
