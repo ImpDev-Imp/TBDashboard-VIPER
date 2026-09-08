@@ -1094,7 +1094,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
       </div>
     </div>
     <div class="panel-footer">
-      <div class="footer-txt">Live · 2026-09-08<br>RAW synced<br><span style="opacity:.45">v2.0 · c31</span></div>
+      <div class="footer-txt">Live · 2026-09-08<br>RAW synced<br><span style="opacity:.45">v2.0 · c32</span></div>
     </div>
   </div>
 
@@ -1182,6 +1182,7 @@ body{background:var(--page-bg);color:var(--text);font-family:var(--fb);display:f
             <section class="esc-sec">
               <div class="esc-sec-title">Saved stacks</div>
               <div class="esc-grid2"><label>Name</label><input id="esc_profileName" placeholder="e.g. Skadi 607k"></div>
+              <div class="esc-grid2"><label>Description</label><input id="esc_profileDesc" placeholder="e.g. Event send, G7 in, S8 first"></div>
               <select id="esc_savedStacks" style="margin-top:8px"><option value="">Choose a saved setup...</option></select>
               <div class="esc-grid2" style="margin-top:8px"><button class="esc-btn" type="button" id="esc_saveNamed">Save</button><button class="esc-btn" type="button" id="esc_deleteNamed">Delete selected</button></div>
               <div class="esc-hint" id="esc_saveHint">Named setups save to VIPER SQLite on this PC. Pick a name from the list to load it. Does not overwrite locked 3Captain JSON.</div>
@@ -7209,14 +7210,26 @@ function escToast(text){
 }
 function escReadSaved(){ try { return JSON.parse(localStorage.getItem(ESC_STORE) || '{}'); } catch(e){ return {}; } }
 function escWriteSaved(items){ localStorage.setItem(ESC_STORE, JSON.stringify(items)); }
+function escEntry(raw){
+  if (!raw) return null;
+  if (raw.settings && typeof raw.settings === 'object') {
+    return {settings: raw.settings, description: raw.description || ''};
+  }
+  return {settings: raw, description: ''};
+}
 function escFillSavedMenu(items, selected){
   escSavedMap = items || {};
   const menu = esc$('esc_savedStacks');
   if (!menu) return;
   menu.innerHTML = '<option value="">Choose a saved setup...</option>';
   Object.keys(escSavedMap).sort(function(a,b){ return a.localeCompare(b); }).forEach(function(name){
+    const entry = escEntry(escSavedMap[name]);
     const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name; menu.append(opt);
+    opt.value = name;
+    const desc = (entry && entry.description || '').trim();
+    opt.textContent = desc ? (name + ' — ' + (desc.length > 40 ? desc.slice(0,37)+'...' : desc)) : name;
+    if (desc) opt.title = desc;
+    menu.append(opt);
   });
   if (selected && escSavedMap[selected]) menu.value = selected;
   const hint = esc$('esc_saveHint');
@@ -7242,7 +7255,7 @@ async function escRefreshSaved(selected){
     const data = await escSqlFetch('/profiles');
     const items = {};
     (data.profiles || []).forEach(function(p){
-      if (p && p.name && p.settings) items[p.name] = p.settings;
+      if (p && p.name && p.settings) items[p.name] = {settings: p.settings, description: p.description || ''};
     });
     escSqlOnline = true;
     escFillSavedMenu(items, selected);
@@ -7252,9 +7265,12 @@ async function escRefreshSaved(selected){
   }
   const items = {};
   (EVENT_CALC_PROFILES || []).forEach(function(p){
-    if (p && p.name && p.settings) items[p.name] = p.settings;
+    if (p && p.name && p.settings) items[p.name] = {settings: p.settings, description: p.description || ''};
   });
-  Object.assign(items, escReadSaved());
+  const local = escReadSaved();
+  Object.keys(local).forEach(function(name){
+    items[name] = escEntry(local[name]);
+  });
   escFillSavedMenu(items, selected);
 }
 function escNum(id){
@@ -7403,13 +7419,15 @@ function escEnsureInit(){
   esc$('esc_saveNamed').onclick = async function(){
     const name = (esc$('esc_profileName').value || '').trim() || (esc$('esc_savedStacks').value || '').trim();
     if (!name) return alert('Give this setup a name.');
-    if (escSavedMap[name] && !confirm('Replace the saved setup "'+name+'"?')) return;
+    if (escSavedMap[name] && !confirm('Replace the saved setup "'+name+'"? Same name overwrites the previous stack and description.')) return;
     const settings = escSettings();
+    const description = (esc$('esc_profileDesc').value || '').trim();
+    const record = {settings: settings, description: description};
     try {
       await escSqlFetch('/profiles/'+encodeURIComponent(name), {
         method: 'PUT',
         headers: {'Content-Type':'application/json'},
-        body: JSON.stringify(settings)
+        body: JSON.stringify(record)
       });
       escSqlOnline = true;
       await escRefreshSaved(name);
@@ -7417,7 +7435,7 @@ function escEnsureInit(){
       escToast('Saved to VIPER SQLite: "'+name+'"');
     } catch (e) {
       const items = escReadSaved();
-      items[name] = settings;
+      items[name] = record;
       escWriteSaved(items);
       escSqlOnline = false;
       await escRefreshSaved(name);
@@ -7437,15 +7455,17 @@ function escEnsureInit(){
     escWriteSaved(items);
     await escRefreshSaved();
     esc$('esc_profileName').value = '';
+    if (esc$('esc_profileDesc')) esc$('esc_profileDesc').value = '';
     escToast('Deleted "'+name+'"');
   };
   esc$('esc_savedStacks').onchange = function(){
     const name = esc$('esc_savedStacks').value;
     if (!name) return;
-    const item = escSavedMap[name];
+    const item = escEntry(escSavedMap[name]);
     if (item) {
       esc$('esc_profileName').value = name;
-      escApplySettings(item);
+      if (esc$('esc_profileDesc')) esc$('esc_profileDesc').value = item.description || '';
+      escApplySettings(item.settings);
       escToast('Loaded "'+name+'"');
     }
   };
